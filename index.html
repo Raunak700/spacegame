@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Dodging Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: black;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: black;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Set initial canvas dimensions
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Load images
+    const spaceshipImg = new Image();
+    spaceshipImg.src = '8T68RMeac.png'; // Ensure this path is correct
+    const asteroidImg = new Image();
+    asteroidImg.src = 'aestroid.png'; // Ensure this path is correct
+    const galaxyBg = new Image();
+    galaxyBg.src = 'galaxy.jpg'; // Ensure this path is correct
+
+    // Load background music
+    const bgMusic = new Audio('space-ambience-56265.mp3'); // Ensure this path is correct
+    bgMusic.loop = true;
+
+    // Game variables
+    const player = { x: canvas.width / 2, y: canvas.height - 80, width: 50, height: 80, speed: 7 };
+    const obstacles = [];
+    const stars = [];
+    let score = 0;
+    let level = 1;
+    let obstacleSpawnRate = 0.02;
+    let obstacleSpeedMultiplier = 1;
+    let gameOver = false;
+    let isPaused = true; // Start with game paused
+    let gameStarted = false; // Indicates if the game has been started
+
+    // Key press states
+    const keys = { left: false, right: false };
+
+    // Device detection for mobile or desktop
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+    // Event listeners for starting the game
+    if (isMobile) {
+      // For mobile: Touch start
+      window.addEventListener('touchstart', (e) => {
+        if (!gameStarted) {
+          startGame(); // Start the game when the screen is tapped
+        }
+      });
+
+      // Handle mobile touch controls for player movement
+      let touchStartX = 0;
+      let touchEndX = 0;
+
+      window.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+      });
+
+      window.addEventListener('touchmove', (e) => {
+        touchEndX = e.touches[0].clientX;
+      });
+
+      window.addEventListener('touchend', () => {
+        if (touchEndX < touchStartX) {
+          // Move left
+          if (player.x > player.width / 2) player.x -= player.speed;
+        } else if (touchEndX > touchStartX) {
+          // Move right
+          if (player.x < canvas.width - player.width / 2) player.x += player.speed;
+        }
+      });
+    } else {
+      // For desktop: Key press
+      window.addEventListener('keydown', (e) => {
+        if (!gameStarted) {
+          startGame(); // Start the game when any key is pressed
+          return;
+        }
+        if (e.key === 'ArrowLeft') keys.left = true;
+        if (e.key === 'ArrowRight') keys.right = true;
+        if (e.key === ' ') togglePause(); // Toggle pause/resume on spacebar
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowLeft') keys.left = false;
+        if (e.key === 'ArrowRight') keys.right = false;
+      });
+    }
+
+    // Start the game
+    function startGame() {
+      gameStarted = true;
+      isPaused = false;
+      bgMusic.play(); // Start the music
+      gameLoop();
+    }
+
+    // Toggle pause
+    function togglePause() {
+      isPaused = !isPaused;
+      if (!isPaused) gameLoop(); // Resume the game
+    }
+
+    // Star class for background
+    class Star {
+      constructor(x, y, size, speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speed = speed;
+      }
+      draw() {
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      update() {
+        this.y += this.speed;
+        if (this.y > canvas.height) {
+          this.y = 0;
+          this.x = Math.random() * canvas.width;
+        }
+      }
+    }
+
+    class Obstacle {
+      constructor(x, y, size, speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.speed = speed;
+      }
+      draw() {
+        ctx.drawImage(asteroidImg, this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+      }
+      update() {
+        this.y += this.speed;
+      }
+    }
+
+    function createStars() {
+      for (let i = 0; i < 100; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        const size = Math.random() * 2 + 1;
+        const speed = Math.random() * 1 + 0.5;
+        stars.push(new Star(x, y, size, speed));
+      }
+    }
+
+    function createObstacle() {
+      const size = Math.random() * 40 + 30;
+      const x = Math.random() * (canvas.width - size);
+      const speed = (Math.random() * 3 + 2) * obstacleSpeedMultiplier;
+      obstacles.push(new Obstacle(x, -size, size, speed));
+    }
+
+    function detectCollision(obstacle) {
+      const dx = player.x - obstacle.x;
+      const dy = player.y - obstacle.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance < player.width / 2 + obstacle.size / 2;
+    }
+
+    function checkLevelUp() {
+      if (score > 0 && score % 10 === 0) {
+        level++;
+        obstacleSpawnRate += 0.005;
+        obstacleSpeedMultiplier += 0.1;
+      }
+    }
+
+    function gameLoop() {
+      // Resize canvas dynamically on screen resizing
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      if (isPaused) {
+        ctx.fillStyle = 'white';
+        ctx.font = '40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Paused', canvas.width / 2, canvas.height / 2);
+        return;
+      }
+
+      if (gameOver) {
+        ctx.fillStyle = 'white';
+        ctx.font = '40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Game Over!', canvas.width / 2, canvas.height / 2 - 40);
+        ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2);
+        ctx.fillText(`Level Reached: ${level}`, canvas.width / 2, canvas.height / 2 + 40);
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(galaxyBg, 0, 0, canvas.width, canvas.height);
+
+      stars.forEach((star) => {
+        star.draw();
+        star.update();
+      });
+
+      ctx.drawImage(spaceshipImg, player.x - player.width / 2, player.y - player.height / 2, player.width, player.height);
+
+      if (keys.left && player.x > player.width / 2) player.x -= player.speed;
+      if (keys.right && player.x < canvas.width - player.width / 2) player.x += player.speed;
+
+      for (let i = 0; i < obstacles.length; i++) {
+        obstacles[i].draw();
+        obstacles[i].update();
+
+        if (detectCollision(obstacles[i])) {
+          gameOver = true;
+        }
+
+        if (obstacles[i].y > canvas.height) {
+          obstacles.splice(i, 1);
+          score++;
+          checkLevelUp();
+        }
+      }
+
+      if (Math.random() < obstacleSpawnRate) createObstacle();
+
+      ctx.fillStyle = 'white';
+      ctx.font = '20px Arial';
+      ctx.fillText(`Score: ${score}`, 10, 30);
+      ctx.fillText(`Level: ${level}`, 10, 60);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    spaceshipImg.onload = asteroidImg.onload = galaxyBg.onload = () => {
+      createStars();
+      if (!gameStarted) {
+        ctx.fillStyle = 'white';
+        ctx.font = '40px Arial';
+        ctx.textAlign = 'center';
+        if (isMobile) {
+          ctx.fillText('Tap to start', canvas.width / 2, canvas.height / 2);
+        } else {
+          ctx.fillText('Press any key to start', canvas.width / 2, canvas.height / 2);
+        }
+      }
+    };
+  </script>
+</body>
+</html>
